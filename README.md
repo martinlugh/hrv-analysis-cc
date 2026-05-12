@@ -1,3 +1,48 @@
+# Heart Rate Variability analysis — Java Toolkit
+
+> **Java 移植版**：纯 Java 工具包，不依赖 Spring Boot / 数据库 / Web 接口，可直接作为 Maven 依赖引用。
+> 对应 Python hrv-analysis 项目，所有参数名、输出字段名与 Python 原版完全一致。
+
+## Java 快速开始
+
+### 构建 & 测试
+
+```bash
+mvn clean test
+```
+
+### 使用示例
+
+```java
+import com.aura.hrv.preprocessing.HrvPreprocessing;
+import com.aura.hrv.features.*;
+import com.aura.hrv.model.FrequencyBand;
+import java.util.*;
+
+List<Double> rr = Arrays.asList(700.0, 710.0, 2300.0, 690.0, 710.0);
+List<Double> nn = HrvPreprocessing.getNnIntervals(rr);
+
+Map<String, Double> time = HrvTimeDomainFeatures.getTimeDomainFeatures(nn);
+System.out.println("mean_nni=" + time.get("mean_nni"));
+
+Map<String, Double> freq = HrvFrequencyDomainFeatures.getFrequencyDomainFeatures(nn);
+System.out.println("lf=" + freq.get("lf") + " hf=" + freq.get("hf"));
+
+Map<String, Double> nl = HrvNonLinearFeatures.getCsiCviFeatures(nn);
+System.out.println("csi=" + nl.get("csi") + " Modified_csi=" + nl.get("Modified_csi"));
+```
+
+### 精度说明
+
+| 模块            | 误差范围  | 说明                                         |
+|----------------|---------|---------------------------------------------|
+| 时域/几何/非线性  | < 1e-10 | 与 Python 完全等价                            |
+| 样本熵          | < 1e-6  | 对齐 nolds.sampen，r=0.2*std(ddof=0)         |
+| 频域 Welch      | < 1e-3  | JTransforms 与 scipy.signal.welch 极小浮点差异 |
+| 频域 Lomb       | 1%~5%   | 频率网格策略与 astropy autopower 存在差异       |
+
+---
+
 # Heart Rate Variability analysis
 
 [![PyPI version](https://badge.fury.io/py/hrv-analysis.svg)](https://badge.fury.io/py/hrv-analysis)
