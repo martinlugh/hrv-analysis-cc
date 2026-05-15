@@ -32,28 +32,66 @@ Map<String, Double> nl = HrvNonLinearFeatures.getCsiCviFeatures(nn);
 System.out.println("csi=" + nl.get("csi") + " Modified_csi=" + nl.get("Modified_csi"));
 ```
 
-### 呼吸频率（新增）
+### 呼吸频率（HrvBreathingRate）
+
+**算法流程（严格对应 HeartPy 内部逻辑）：**
+
+```
+RR interval (ms)
+  → Step 2  累积时间轴：rr_x = cumsum(rr) / 1000，强制从 0 开始（秒）
+  → Step 3  三次样条插值（cubic spline）→ 均匀采样信号 rr_interp（默认 4 Hz）
+  → Step 4  去 DC：rr_normalized = rr_interp - mean(rr_interp)
+  → Step 5  Welch PSD（Hann 窗，nfft=4096）
+  → Step 6  掩膜：freqs >= 0.1 Hz & freqs <= 0.4 Hz
+  → Step 7  主峰：breathingrate = freqs[argmax(psd[mask])]（Hz）
+  → Step 8  换算：breathingratePerMinute = breathingrate × 60
+```
+
+**调用示例：**
 
 ```java
 import com.aura.hrv.features.HrvBreathingRate;
+import java.util.Map;
 
-// 使用默认参数（Welch 法，fs=4 Hz，呼吸频段 0.1~0.4 Hz）
-Map<String, Double> br = HrvBreathingRate.getBreathingRate(nn);
+// 1. 默认参数（fs=4Hz，呼吸频段 0.1~0.4 Hz，三次样条插值）
+Map<String, Double> br = HrvBreathingRate.getBreathingRate(nn_intervals);
 System.out.println("breathing_rate_hz         = " + br.get("breathing_rate_hz"));
 System.out.println("breathing_rate_per_minute = " + br.get("breathing_rate_per_minute"));
 
+// 2. 自定义采样频率和频段
+Map<String, Double> br2 = HrvBreathingRate.getBreathingRate(nn_intervals, 4, 0.1, 0.4);
+```
+
+**方法签名：**
+
+```java
+// 默认参数
+Map<String, Double> getBreathingRate(List<Double> nn_intervals)
+
 // 自定义参数
-Map<String, Double> br2 = HrvBreathingRate.getBreathingRate(nn, 4, "linear", 0.1, 0.4);
+Map<String, Double> getBreathingRate(List<Double> nn_intervals,
+                                     int    sampling_frequency,  // 默认 4
+                                     double freqLow,             // 默认 0.1
+                                     double freqHigh)            // 默认 0.4
 ```
 
 **输出字段：**
 
 | key | 说明 |
 |---|---|
-| `breathing_rate_hz` | 呼吸频率（Hz），PSD 在 0.1~0.4 Hz 内的峰值频率 |
+| `breathing_rate_hz` | 呼吸频率（Hz），0.1~0.4 Hz 内的 PSD 峰值频率 |
 | `breathing_rate_per_minute` | 呼吸频率（次/分钟）= breathing_rate_hz × 60 |
 
-**算法原理：** 复用 `HrvFrequencyDomainFeatures` 的 Welch PSD 结果，在 0.1~0.4 Hz 呼吸频段内找功率最大值对应的频率（RSA 峰值），无额外计算开销，不修改任何已有文件。
+**呼吸频率参考范围：**
+
+| 呼吸次数/分钟 | 对应 Hz |
+|---|---|
+| 6  次/分钟 | 0.10 Hz |
+| 12 次/分钟 | 0.20 Hz |
+| 18 次/分钟 | 0.30 Hz |
+| 24 次/分钟 | 0.40 Hz |
+
+**注意：** 本模块不修改任何已有文件，独立新增。内部复用 `HrvFrequencyDomainFeatures.welchPsd()`，三次样条插值使用 Apache Commons Math `SplineInterpolator`。
 
 ### 精度说明
 
