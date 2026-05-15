@@ -32,6 +32,29 @@ Map<String, Double> nl = HrvNonLinearFeatures.getCsiCviFeatures(nn);
 System.out.println("csi=" + nl.get("csi") + " Modified_csi=" + nl.get("Modified_csi"));
 ```
 
+### 呼吸频率（新增）
+
+```java
+import com.aura.hrv.features.HrvBreathingRate;
+
+// 使用默认参数（Welch 法，fs=4 Hz，呼吸频段 0.1~0.4 Hz）
+Map<String, Double> br = HrvBreathingRate.getBreathingRate(nn);
+System.out.println("breathing_rate_hz         = " + br.get("breathing_rate_hz"));
+System.out.println("breathing_rate_per_minute = " + br.get("breathing_rate_per_minute"));
+
+// 自定义参数
+Map<String, Double> br2 = HrvBreathingRate.getBreathingRate(nn, 4, "linear", 0.1, 0.4);
+```
+
+**输出字段：**
+
+| key | 说明 |
+|---|---|
+| `breathing_rate_hz` | 呼吸频率（Hz），PSD 在 0.1~0.4 Hz 内的峰值频率 |
+| `breathing_rate_per_minute` | 呼吸频率（次/分钟）= breathing_rate_hz × 60 |
+
+**算法原理：** 复用 `HrvFrequencyDomainFeatures` 的 Welch PSD 结果，在 0.1~0.4 Hz 呼吸频段内找功率最大值对应的频率（RSA 峰值），无额外计算开销，不修改任何已有文件。
+
 ### 精度说明
 
 | 模块            | 误差范围  | 说明                                         |
