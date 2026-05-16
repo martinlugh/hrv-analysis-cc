@@ -11,6 +11,45 @@
 mvn clean test
 ```
 
+### 全量分析（推荐）
+
+一次调用获得所有 HRV 特征 + 呼吸频率，无需单独调用各子模块：
+
+```java
+import com.aura.hrv.preprocessing.HrvPreprocessing;
+import com.aura.hrv.features.HrvFullAnalysis;
+import java.util.*;
+
+List<Double> rr = Arrays.asList(700.0, 710.0, 2300.0, 690.0, 710.0, /* ... */);
+List<Double> nn = HrvPreprocessing.getNnIntervals(rr);
+
+// 一次调用，输出全部 34 个特征
+Map<String, Object> all = HrvFullAnalysis.analyze(nn);
+
+// 直接按 key 取值
+System.out.println(all.get("mean_nni"));                  // 时域
+System.out.println(all.get("lf"));                        // 频域
+System.out.println(all.get("sd1"));                       // Poincaré
+System.out.println(all.get("sampen"));                    // 样本熵
+System.out.println(all.get("breathing_rate_hz"));         // 呼吸频率(Hz)
+System.out.println(all.get("breathing_rate_per_minute")); // 呼吸频率(次/分)
+```
+
+**全量输出字段（共 34 个）：**
+
+| 分类 | 字段 |
+|---|---|
+| 时域（16） | `mean_nni` `sdnn` `sdsd` `rmssd` `median_nni` `range_nni` `nni_50` `pnni_50` `nni_20` `pnni_20` `cvsd` `cvnni` `mean_hr` `max_hr` `min_hr` `std_hr` |
+| 几何（2） | `triangular_index` `tinn` |
+| 频域（7） | `vlf` `lf` `hf` `total_power` `lf_hf_ratio` `lfnu` `hfnu` |
+| 非线性（6） | `sd1` `sd2` `ratio_sd2_sd1` `csi` `cvi` `Modified_csi` |
+| 样本熵（1） | `sampen` |
+| 呼吸频率（2） | `breathing_rate_hz` `breathing_rate_per_minute` |
+
+### 单独调用（按需）
+
+各子模块仍可独立使用，与全量分析结果完全一致：
+
 ### 使用示例
 
 ```java
