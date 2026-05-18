@@ -1,3 +1,148 @@
+# Heart Rate Variability analysis — Java Toolkit
+
+> **Java 移植版**：纯 Java 工具包，不依赖 Spring Boot / 数据库 / Web 接口，可直接作为 Maven 依赖引用。
+> 对应 Python hrv-analysis 项目，所有参数名、输出字段名与 Python 原版完全一致。
+
+## Java 快速开始
+
+### 构建 & 测试
+
+```bash
+mvn clean test
+```
+
+### 全量分析（推荐）
+
+一次调用获得所有 HRV 特征 + 呼吸频率，无需单独调用各子模块：
+
+```java
+import com.aura.hrv.preprocessing.HrvPreprocessing;
+import com.aura.hrv.features.HrvFullAnalysis;
+import java.util.*;
+
+List<Double> rr = Arrays.asList(700.0, 710.0, 2300.0, 690.0, 710.0, /* ... */);
+List<Double> nn = HrvPreprocessing.getNnIntervals(rr);
+
+// 一次调用，输出全部 34 个特征
+Map<String, Object> all = HrvFullAnalysis.analyze(nn);
+
+// 直接按 key 取值
+System.out.println(all.get("mean_nni"));                  // 时域
+System.out.println(all.get("lf"));                        // 频域
+System.out.println(all.get("sd1"));                       // Poincaré
+System.out.println(all.get("sampen"));                    // 样本熵
+System.out.println(all.get("breathing_rate_hz"));         // 呼吸频率(Hz)
+System.out.println(all.get("breathing_rate_per_minute")); // 呼吸频率(次/分)
+```
+
+**全量输出字段（共 34 个）：**
+
+| 分类 | 字段 |
+|---|---|
+| 时域（16） | `mean_nni` `sdnn` `sdsd` `rmssd` `median_nni` `range_nni` `nni_50` `pnni_50` `nni_20` `pnni_20` `cvsd` `cvnni` `mean_hr` `max_hr` `min_hr` `std_hr` |
+| 几何（2） | `triangular_index` `tinn` |
+| 频域（7） | `vlf` `lf` `hf` `total_power` `lf_hf_ratio` `lfnu` `hfnu` |
+| 非线性（6） | `sd1` `sd2` `ratio_sd2_sd1` `csi` `cvi` `Modified_csi` |
+| 样本熵（1） | `sampen` |
+| 呼吸频率（2） | `breathing_rate_hz` `breathing_rate_per_minute` |
+
+### 单独调用（按需）
+
+各子模块仍可独立使用，与全量分析结果完全一致：
+
+### 使用示例
+
+```java
+import com.aura.hrv.preprocessing.HrvPreprocessing;
+import com.aura.hrv.features.*;
+import com.aura.hrv.model.FrequencyBand;
+import java.util.*;
+
+List<Double> rr = Arrays.asList(700.0, 710.0, 2300.0, 690.0, 710.0);
+List<Double> nn = HrvPreprocessing.getNnIntervals(rr);
+
+Map<String, Double> time = HrvTimeDomainFeatures.getTimeDomainFeatures(nn);
+System.out.println("mean_nni=" + time.get("mean_nni"));
+
+Map<String, Double> freq = HrvFrequencyDomainFeatures.getFrequencyDomainFeatures(nn);
+System.out.println("lf=" + freq.get("lf") + " hf=" + freq.get("hf"));
+
+Map<String, Double> nl = HrvNonLinearFeatures.getCsiCviFeatures(nn);
+System.out.println("csi=" + nl.get("csi") + " Modified_csi=" + nl.get("Modified_csi"));
+```
+
+### 呼吸频率（HrvBreathingRate）
+
+**算法流程（严格对应 HeartPy 内部逻辑）：**
+
+```
+RR interval (ms)
+  → Step 2  累积时间轴：rr_x = cumsum(rr) / 1000，强制从 0 开始（秒）
+  → Step 3  三次样条插值（cubic spline）→ 均匀采样信号 rr_interp（默认 4 Hz）
+  → Step 4  去 DC：rr_normalized = rr_interp - mean(rr_interp)
+  → Step 5  Welch PSD（Hann 窗，nfft=4096）
+  → Step 6  掩膜：freqs >= 0.1 Hz & freqs <= 0.4 Hz
+  → Step 7  主峰：breathingrate = freqs[argmax(psd[mask])]（Hz）
+  → Step 8  换算：breathingratePerMinute = breathingrate × 60
+```
+
+**调用示例：**
+
+```java
+import com.aura.hrv.features.HrvBreathingRate;
+import java.util.Map;
+
+// 1. 默认参数（fs=4Hz，呼吸频段 0.1~0.4 Hz，三次样条插值）
+Map<String, Double> br = HrvBreathingRate.getBreathingRate(nn_intervals);
+System.out.println("breathing_rate_hz         = " + br.get("breathing_rate_hz"));
+System.out.println("breathing_rate_per_minute = " + br.get("breathing_rate_per_minute"));
+
+// 2. 自定义采样频率和频段
+Map<String, Double> br2 = HrvBreathingRate.getBreathingRate(nn_intervals, 4, 0.1, 0.4);
+```
+
+**方法签名：**
+
+```java
+// 默认参数
+Map<String, Double> getBreathingRate(List<Double> nn_intervals)
+
+// 自定义参数
+Map<String, Double> getBreathingRate(List<Double> nn_intervals,
+                                     int    sampling_frequency,  // 默认 4
+                                     double freqLow,             // 默认 0.1
+                                     double freqHigh)            // 默认 0.4
+```
+
+**输出字段：**
+
+| key | 说明 |
+|---|---|
+| `breathing_rate_hz` | 呼吸频率（Hz），0.1~0.4 Hz 内的 PSD 峰值频率 |
+| `breathing_rate_per_minute` | 呼吸频率（次/分钟）= breathing_rate_hz × 60 |
+
+**呼吸频率参考范围：**
+
+| 呼吸次数/分钟 | 对应 Hz |
+|---|---|
+| 6  次/分钟 | 0.10 Hz |
+| 12 次/分钟 | 0.20 Hz |
+| 18 次/分钟 | 0.30 Hz |
+| 24 次/分钟 | 0.40 Hz |
+
+**注意：** 本模块不修改任何已有文件，独立新增。内部复用 `HrvFrequencyDomainFeatures.welchPsd()`，三次样条插值使用 Apache Commons Math `SplineInterpolator`。
+
+### 精度说明
+
+| 模块            | 误差范围  | 说明                                         |
+|----------------|---------|---------------------------------------------|
+| 时域/几何/非线性  | < 1e-10 | 与 Python 完全等价                            |
+| 样本熵          | < 1e-6  | 对齐 nolds.sampen，r=0.2*std(ddof=0)         |
+| 频域 Welch      | < 1e-3  | JTransforms 与 scipy.signal.welch 极小浮点差异 |
+| 频域 Lomb       | 1%~5%   | 频率网格策略与 astropy autopower 存在差异       |
+
+---
+
 # Heart Rate Variability analysis
 
 [![PyPI version](https://badge.fury.io/py/hrv-analysis.svg)](https://badge.fury.io/py/hrv-analysis)
